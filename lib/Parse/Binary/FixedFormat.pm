@@ -34,15 +34,17 @@ sub parse_fields {
 }
 
 sub _format {
-    my $format = join('', @{$_[0]{Format}||=[]});
-    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if $] < 5.008;
+    my ($self, $lazy) = @_;
+    my $format = join('', @{$self->{Format}||=[]});
+    $format =~ s/\((.*?)\)\*$/a*/ if $lazy; # tail iteration
+    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if ($] < 5.008);
     return $format;
 }
 
-
 sub unformat {
-    my ($self,$frec) = @_;
-    my @flds = unpack $self->_format, $frec;
+    my ($self,$frec,$lazy) = @_;
+
+    my @flds = unpack $self->_format($lazy), $frec;
     my $rec = {};
     foreach my $i (0 .. $#{$self->{Names}}) {
 	my $name = $self->{Names}[$i];
@@ -56,12 +58,22 @@ sub unformat {
 	    }
 
 	    if ($group) {
-		my @data = splice @flds, 0, $count;
 		my $pad = 0;
 		$pad = length($1) if $self->{Format}[$i] =~ /(X+)/;
-		while (@data) {
-		    push @{$rec->{$name}}, [ splice(@data, 0, $group) ];
-		    substr($rec->{$name}[-1][-1], -$pad, $pad, '') if $pad;
+
+		if ($lazy and $i == $#{$self->{Names}}) {
+		    push @{$rec->{$name}}, $self->lazy_unformat(
+			$rec, $name, $i, $group, $pad, \@flds
+		    ) if @flds and length($flds[0]);
+		    next;
+		}
+
+		my $count_idx = 0;
+		while (my @content = splice(@flds, 0, $group)) {
+		    substr($content[-1], -$pad, $pad, '') if $pad;
+		    push @{$rec->{$name}}, \@content;
+		    $count_idx += $group;
+		    last if $count_idx >= $count;
 		}
 	    }
 	    else {
@@ -72,6 +84,28 @@ sub unformat {
 	}
     }
     return $rec;
+}
+
+sub lazy_unformat {
+    my ($self, $rec, $name, $i, $group, $pad, $flds) = @_;
+    my $format = $self->{Format}[$i] or die "No format found";
+    $format =~ s/^\((.*?)\)\*$/$1/ or die "Not a count=* field";
+
+    # for each request of a member data, we:
+    my ($iter_sub);
+    $iter_sub = sub {
+	# grab one chunk of data 
+	my @content = unpack($format, $flds->[0]);
+	my $length = length(pack($format, @content));
+	# eliminate it from the source string
+	substr($flds->[0], 0, $length, '');
+	# remove extra padding
+	substr($content[-1], -$pad, $pad, '') if $pad;
+	# and prepend (or replace if there are no more data) with it
+	splice(@{$rec->{$name}}, -1, ((length($flds->[0]) > $pad) ? 0 : 1), \@content);
+	return \@content;
+    };
+    return $iter_sub;
 }
 
 sub format {

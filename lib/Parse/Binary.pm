@@ -1,8 +1,8 @@
-# $File: //member/autrijus/.vimrc $ $Author: autrijus $
-# $Revision: #14 $ $Change: 4137 $ $DateTime: 2003/02/08 11:41:59 $
+# $File: /local/member/autrijus/Parse-Binary//lib/Parse/Binary.pm $ $Author: autrijus $
+# $Revision: #36 $ $Change: 3944 $ $DateTime: 2004-02-17T19:40:00.242275Z $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.05';
+$Parse::Binary::VERSION = '0.06';
 
 use bytes;
 use strict;
@@ -14,8 +14,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.05 of Parse::Binary, released
-February 17, 2004.
+This document describes version 0.06 of Parse::Binary, released
+February 18, 2004.
 
 =head1 SYNOPSIS
 
@@ -74,7 +74,10 @@ of using this module.
 
 =cut
 
-use constant PROPERTIES	    => qw( %struct $filename $size $parent @siblings %children );
+use constant PROPERTIES	    => qw(
+    %struct $filename $size $parent @siblings %children
+    $output $lazy $iterator $iterated
+);
 use constant ENCODED_FIELDS => ( 'Data' );
 use constant FORMAT	    => ( Data => 'a*' );
 use constant SUBFORMAT	    => ();
@@ -86,6 +89,9 @@ use constant DISPATCH_FIELD => undef;
 use constant BASE_CLASS	    => undef;
 use constant ENCODING	    => undef;
 use constant PADDING	    => undef;
+
+eval { require Scalar::Util; 1 }
+    or *Scalar::Util::weaken = sub { 1 };
 
 foreach my $item (+PROPERTIES) {
     no strict 'refs';
@@ -116,8 +122,18 @@ sub new {
     %$obj = (%$obj, %$attr);
 
     my $data = $obj->read_data($input);
-    $obj = $obj->load($data);
-    %$obj = (%$obj, %$attr);	# re-filling dispatch objects
+    $obj->load($data, $attr);
+
+    my $load_sub = sub {
+	$obj->make_members unless $obj->iterator;
+    };
+
+    if ($obj->lazy) {
+	$obj->set_lazy($load_sub);
+    }
+    else {
+	&$load_sub;
+    }
 
     return $obj;
 }
@@ -404,7 +420,7 @@ sub padding {
 sub load_struct {
     my ($self, $data) = @_;
     local $SIG{__WARN__} = sub {};
-    $self->{struct} = $self->parser->unformat($$data . $self->padding);
+    $self->{struct} = $self->parser->unformat($$data . $self->padding, $self->lazy);
 }
 
 sub load_size {
@@ -413,8 +429,15 @@ sub load_size {
     return 1;
 }
 
+sub lazy_load {
+    my ($self) = @_;
+    ref(my $sub = $self->lazy) or return;
+    $self->set_lazy(1);
+    goto &$sub;
+}
+
 sub load {
-    my ($self, $data) = @_;
+    my ($self, $data, $attr) = @_;
     return $self unless defined $data;
     $self->class->init;
 
@@ -426,11 +449,12 @@ sub load {
 	my $subclass = $self->dispatch_class($value);
 	if ($subclass and $subclass ne $self->class) {
 	    $self->require($subclass);
-	    return $subclass->new($data);
+	    bless($self, $subclass);
+	    $self->load($data, $attr);
+	    $self->make_members unless $self->iterator;
 	}
     }
 
-    $self->make_members;
     return $self;
 }
 
@@ -475,10 +499,13 @@ sub spawn_sibling {
     my $parent = $self->parent or die "$self has no parent";
 
     my $obj = $self->spawn(%args);
+#    $obj->set_lazy($self->lazy);
     $obj->set_parent($parent);
+    $obj->set_output($self->output);
     $obj->set_siblings($self->{siblings});
     $obj->set_size(length($obj->dump));
     $obj->initialize;
+
     return $obj;
 }
 
@@ -516,9 +543,10 @@ sub append_obj {
 
 sub remove {
     my ($self, %args) = @_;
-    $self->set_siblings([
-	grep { ($_ != $self) } $self->siblings
-    ]);
+    my $siblings = $self->siblings;
+    splice(@$siblings, $self->sibling_index, 1);
+
+    Scalar::Util::weaken($self->{parent});
 }
 
 sub read_data {
@@ -556,12 +584,10 @@ sub make_members {
 	    $self->field_pack_format($field),
 	);
 
-	$self->set_field_children(
-	    $field,
-	    [ map {
-		$self->new_member( $field, \pack($format, @$_) )
-	    } $self->validate_memberdata($field) ]
-	);
+	my $members = [ map {
+	    $self->new_member( $field, \pack($format, @$_) )
+	} $self->validate_memberdata($field) ];
+	$self->set_field_children( $field, $members );
     }
 }
 
@@ -584,6 +610,7 @@ sub set_field_children {
 sub field_children {
     my ($self, $field) = @_;
     my $children = ($self->children->{$field} ||= []);
+    # $_->lazy_load for @$children;
     return(wantarray ? @$children : $children);
 }
 
@@ -594,17 +621,97 @@ sub validate_memberdata {
 
 sub first_member {
     my ($self, $type) = @_;
+    $self->lazy_load;
+
     return undef unless $self->has_members;
     foreach my $field ($self->member_fields) {
 	foreach my $member ($self->field_children($field)) {
-	    return $member if !$type or $member->is_type($type);
+	    return $member if $member->is_type($type);
 	}
     }
     return undef;
 }
 
+sub next_member {
+    my ($self, $type) = @_;
+    return undef unless $self->has_members;
+
+    if ($self->lazy and !$self->iterated) {
+	while (my $member = $self->make_next_member) {
+	    return $member if $member->is_type($type);
+	}
+	$self->set_iterated(1);
+	return;
+    }
+
+    $self->{_next_member}{$type} ||= $self->members($type);
+
+    shift(@{$self->{_next_member}{$type}})
+	|| undef($self->{_next_member}{$type});
+}
+
+sub make_next_member {
+    my ($self) = @_;
+
+    $self->has_members or return;
+
+    if (ref($self->lazy)) {
+	$self->set_children;
+	$self->set_iterator({ field_idx => 0, item_idx => 0 });
+	$self->lazy_load;
+    }
+
+    my $iterator = $self->iterator or return; 
+
+    my ($field_idx, $item_idx, $format)
+	= @{$iterator}{qw(field_idx item_idx format)};
+
+    my @fields = $self->member_fields;
+    if ($field_idx > $#fields) {
+	$self->set_iterator;
+	return;
+    }
+
+    my $field = $fields[$field_idx] or return;
+    $format ||= ($self->eval_format(
+	$self->struct,
+	$self->field_pack_format($field),
+    ))[0];
+
+    my $items = $self->field($field);
+    if ($item_idx > $#$items) {
+	$self->set_iterator({
+	    field_idx   => ++$field_idx,
+	    item_idx    => 0,
+	    format	=> undef,
+	});
+	goto &{$self->can('make_next_member')};
+    }
+
+    my $item = $items->[$item_idx];
+    $self->set_iterator({
+	field_idx   => $field_idx,
+	item_idx    => ++$item_idx,
+	format	    => $format,
+    });
+
+    $item = &$item if UNIVERSAL::isa($item, 'CODE');
+
+    if (!$self->valid_memberdata($item)) {
+	goto &{$self->can('make_next_member')};
+    }
+
+    my $member = $self->new_member( $field, \pack($format, @$item) );
+    my $children = $self->field_children($field);
+    push @$children, $member;
+    $member->lazy_load;
+    return $member;
+}
+
 sub members {
     my ($self, $type) = @_;
+    $self->lazy_load;
+
     my @members = map {
 	grep { $type ? $_->is_type($type) : 1 } $self->field_children($_)
     } $self->member_fields;
@@ -623,9 +730,12 @@ sub members_recursive {
 sub new_member {
     my ($self, $field, $data) = @_;
     my $obj = $self->member_class($field)->new($data);
+
     $obj->set_siblings(scalar $self->field_children($field));
     $obj->set_parent($self);
+    $obj->set_output($self->output);
     $obj->initialize;
+
     return $obj;
 }
 
@@ -641,12 +751,16 @@ sub dump {
 
 sub write {
     my ($self, $file) = @_;
+
     if (ref($file)) {
 	$$file = $self->dump;
     }
+    elsif (!defined($file) and my $fh = $self->output) {
+	print $fh $self->dump;
+    }
     else {
 	$file = $self->filename unless defined $file;
-	$self->write_file($file, $self->dump);
+	$self->write_file($file, $self->dump) if defined $file;
     }
 }
 
@@ -668,8 +782,11 @@ sub superclasses {
 
 sub is_type {
     my ($self, $type) = @_;
+    return 1 unless defined $type;
+
     my $class = ref($self) || $self;
 
+    $type =~ s/__/::/g;
     $type =~ s/[^\w:]//g;
     return 1 if ($class =~ /::$type$/);
 
@@ -729,6 +846,45 @@ sub substr {
     # Substitute a range
     substr($data, $offset, $length, $replace);
     $self->SetData($data);
+}
+
+sub set_output_file {
+    my ($self, $file) = @_;
+
+    require IO::File;
+    my $fh = IO::File->new("> $file") or die $!;
+    binmode($fh);
+    $self->set_output($fh);
+}
+
+sub callback {
+    my $self  = shift;
+    my $types = shift or return;
+
+    my ($pkg, $level);
+    while ($pkg = caller($level++)) {
+	last unless $pkg eq __PACKAGE__;
+    }
+    die "Cannot find calling package" unless $pkg;
+
+    $self->lazy_load;
+    foreach my $type (@$types) {
+	no strict 'refs';
+	my $method = $type;
+	$method =~ s/::/_/g;
+	$method =~ s/\*/__/g;
+	next unless $type eq '*' or $self->is_type($type);
+
+	unshift @_, $self;
+	goto &{"$pkg\::$method"};
+    }
+}
+
+sub callback_members {
+    my $self = shift;
+    while (my $member = $self->next_member) {
+	$member->callback(@_);
+    }
 }
 
 1;

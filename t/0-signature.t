@@ -1,6 +1,6 @@
 #!/usr/bin/perl
-# $File: //member/autrijus/PAR/t/0-signature.t $ $Author: autrijus $
-# $Revision: #8 $ $Change: 7648 $ $DateTime: 2003/08/21 21:16:16 $
+# $File: /local/member/autrijus//Parse-Binary/t/0-signature.t $ $Author: autrijus $
+# $Revision: #4 $ $Change: 3920 $ $DateTime: 2004-02-17T10:30:32.123171Z $
 
 use strict;
 print "1..1\n";

@@ -1,5 +1,5 @@
-# $File: //member/autrijus/Parse-AFP/README $ $Author: autrijus $
-# $Revision: #2 $ $Change: 9927 $ $DateTime: 2004/02/06 19:31:24 $
+# $File: /local/member/autrijus//Parse-Binary/README $ $Author: autrijus $
+# $Revision: #6 $ $Change: 3920 $ $DateTime: 2004-02-17T10:30:32.123171Z $
 
 This is the README file for Parse::Binary, a module for unpacking
 binary data structures into object hierarchies.
