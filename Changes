@@ -1,4 +1,17 @@
 ----------------------------------------------------------------------
+r3878:  autrijus | 2004-02-16T22:07:06.771584Z
+
+* This be 0.05.
+* fields with name as '_' now means "choose an unique name for me".
+  there can be multiple such fields, and they won't overlap.
+* new control constant ENCODED_FIELDS (default to 'Data'), that controls 
+  which fields get affected by ENCODING.
+
+----------------------------------------------------------------------
+r3845:  autrijus | 2004-02-15T22:37:07.345274Z
+
+* changes and signatures.
+----------------------------------------------------------------------
 r3844:  autrijus | 2004-02-15T21:54:35.998897Z
 
 * This be 0.04.

@@ -2,7 +2,7 @@
 # $Revision: #14 $ $Change: 4137 $ $DateTime: 2003/02/08 11:41:59 $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.04';
+$Parse::Binary::VERSION = '0.05';
 
 use bytes;
 use strict;
@@ -14,8 +14,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.04 of Parse::Binary, released
-February 16, 2004.
+This document describes version 0.05 of Parse::Binary, released
+February 17, 2004.
 
 =head1 SYNOPSIS
 
@@ -75,6 +75,7 @@ of using this module.
 =cut
 
 use constant PROPERTIES	    => qw( %struct $filename $size $parent @siblings %children );
+use constant ENCODED_FIELDS => ( 'Data' );
 use constant FORMAT	    => ( Data => 'a*' );
 use constant SUBFORMAT	    => ();
 use constant DEFAULT_ARGS   => ();
@@ -177,11 +178,18 @@ sub init {
     my @format_list = @format;
     *{"$class\::format_list"} = sub { @format_list };
 
-    my (@fields, @formats, @pack_formats);
+    my (@fields, @formats, @pack_formats, $underscore_count);
     my (%field_format, %field_pack_format);
     my (%field_parser, %field_packer, %field_length);
     my (@member_fields, %member_class);
     while (my ($field, $format) = splice(@format, 0, 2)) {
+	if ($field eq '_') {
+	    # "we don't care" fields 
+	    $underscore_count++;
+	    $field = "_${underscore_count}_$class";
+	    $field =~ s/:/_/g;
+	}
+
 	if (ref $format) {
 	    $member_class{$field} = $class->classname($field);
 	    $field =~ s/:/_/g;
@@ -237,9 +245,12 @@ sub init {
     *{"$class\::field_packer"} = sub { $field_packer{$_[1]} };
     *{"$class\::has_field"} = sub { $field_packer{$_[1]} };
 
+    my %enc_fields = map { ($_ => 1) } $class->ENCODED_FIELDS;
+
     foreach my $field (@fields) {
 	next if defined &{"$class\::$field"};
-	if ($field eq 'Data' and my $encoding = $class->ENCODING) {
+
+	if ($enc_fields{$field} and my $encoding = $class->ENCODING) {
 	    require Encode;
 
 	    *{"$class\::$field"} = sub {
