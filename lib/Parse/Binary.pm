@@ -1,8 +1,5 @@
-# $File: /local/member/autrijus/Parse-Binary//lib/Parse/Binary.pm $ $Author: autrijus $
-# $Revision: #28 $ $Change: 3627 $ $DateTime: 2004-03-16T12:43:05.931462Z $
-
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.08';
+$Parse::Binary::VERSION = '0.09';
 
 use bytes;
 use strict;
@@ -15,8 +12,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.08 of Parse::Binary, released
-September 8, 2004.
+This document describes version 0.09 of Parse::Binary, released
+December 24, 2004.
 
 =head1 SYNOPSIS
 
@@ -348,6 +345,8 @@ sub dispatch_class {
     my $class = exists($table->{$field}) ? $table->{$field} : $table->{'*'};
 
     $class = &$class($self, $field) if UNIVERSAL::isa($class, 'CODE');
+    defined $class or return;
+
     if (my $members = $self->{parent}{callback_members}) {
 	return unless $members->{$class};
     }
@@ -723,7 +722,7 @@ sub make_next_member {
 	$format ||= ($self->eval_format( $struct, $formats->{$field} ))[0];
 
 	my $item = $items->[$item_idx++];
-	$item = &$item if UNIVERSAL::isa($item, 'CODE');
+	$item = $item->($self, $items) if UNIVERSAL::isa($item, 'CODE');
 	$self->valid_memberdata($item) or redo;
 
 	my $member = $self->new_member( $field, \pack($format, @$item) );

@@ -1,3 +1,8 @@
+[Changes for 0.09 - 2004-12-24]
+
+* In Parse::Binary::FixedFormat's lazy_unformat, remove
+  dangling cyclic references to reduce memory leakage.
+
 [Changes for 0.08 - 2004-09-08]
 
 * In Parse::Binary::FixedFormat, pass data around by

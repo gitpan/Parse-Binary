@@ -1,6 +1,4 @@
-#!/usr/bin/env perl
-# $File: //local/member/autrijus/Parse-Binary/Makefile.PL $ $Author: autrijus $
-# $Revision: #4 $ $Change: 1130 $ $DateTime: 2004-02-17T15:40:29.640821Z $
+#!/usr/bin/perl
 
 use inc::Module::Install;
 

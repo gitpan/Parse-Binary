@@ -3,12 +3,12 @@ package Parse::Binary::FixedFormat;
 use bytes;
 use strict;
 use integer;
-our $VERSION = "0.03";
+our $VERSION = '0.04';
 
 sub new {
     my ($class, $layout) = @_;
     my $self;
-    if (ref $layout eq "HASH") {
+    if (UNIVERSAL::isa($layout, 'HASH')) {
 	require Parse::Binary::FixedFormat::Variants;
 	$self = Parse::Binary::FixedFormat::Variants->new($layout);
     } else {
@@ -42,7 +42,7 @@ sub _format {
 	my $format = join('', @{$self->{Format}});
 	$_format_cache{$format} ||= do {
 	    $format =~ s/\((.*?)\)\*$/a*/ if $lazy; # tail iteration
-	    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if ($] lt '5.008');
+	    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if ($] < 5.008);
 	    $format;
 	};
     };
@@ -78,9 +78,11 @@ sub unformat {
 		    my $format = $self->{Format}[$i] or die "No format found";
 		    $format =~ s/^\((.*?)\)\*$/$1/ or die "Not a count=* field";
 
-		    push @{$rec->{$name}}, $self->lazy_unformat(
-			$parent, $rec, $name, $i, $group, $pad, $format, \($flds[0])
+                    my $record = ($rec->{$name} ||= []);
+		    push @$record, $self->lazy_unformat(
+			$parent, $record, $pad, $format, \($flds[0])
 		    ) if @flds and length($flds[0]);
+
 		    next;
 		}
 
@@ -103,29 +105,31 @@ sub unformat {
 }
 
 sub lazy_unformat {
-    my ($self, $parent, $rec, $name, $i, $group, $pad, $format, $data) = @_;
+    my ($self, $parent, $record, $pad, $format, $data) = @_;
 
     # for each request of a member data, we:
-    my ($iter_sub);
-    my $valid_sub = $parent->can('valid_unformat');
-    $iter_sub = sub {
+    my $valid_sub = ($parent->can('valid_unformat') ? 1 : 0);
+    return sub { {
 	# grab one chunk of data 
 	my @content = unpack($format, $$data);
 	my $length = length(pack($format, @content));
+
 	# eliminate it from the source string
 	my $chunk = substr($$data, 0, $length, '');
 	my $done = (length($$data) <= $pad);
-	if ($valid_sub and !$valid_sub->($parent, \@content, \$chunk, $done) and !$done) {
+
+	if ($valid_sub and !$done and !$_[0]->valid_unformat(\@content, \$chunk, $done)) {
 	    # weed out invalid data immediately
-	    goto &$iter_sub;
+	    redo;
 	}
+
 	# remove extra padding
 	substr($content[-1], -$pad, $pad, '') if $pad;
+
 	# and prepend (or replace if there are no more data) with it
-	splice(@{$rec->{$name}}, -1, ($done ? 1 : 0), \@content);
+	splice(@{$_[1]}, -1, $done, \@content);
 	return \@content;
-    };
-    return $iter_sub;
+    } };
 }
 
 sub format {
