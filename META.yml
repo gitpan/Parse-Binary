@@ -1,5 +1,5 @@
 name: Parse-Binary
-version: 0.01
+version: 0.02
 abstract: Binary data structure parser
 author: Autrijus Tang <autrijus@autrijus.org>
 license: perl

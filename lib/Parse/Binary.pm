@@ -2,7 +2,7 @@
 # $Revision: #14 $ $Change: 4137 $ $DateTime: 2003/02/08 11:41:59 $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.01';
+$Parse::Binary::VERSION = '0.02';
 
 use bytes;
 use strict;
@@ -12,9 +12,15 @@ use Parse::Binary::FixedFormat;
 
 Parse::Binary - Unpack binary data structures into object hierarchies
 
+=head1 VERSION
+
+This document describes version 0.02 of Parse::Binary, released
+February 14, 2004.
+
 =head1 SYNOPSIS
 
-    # This class represents a Win32 F<.ico> file
+# This class represents a Win32 F<.ico> file:
+
     package IconFile;
     use base 'Parse::Binary';
     use constant FORMAT => (
@@ -25,7 +31,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 	Data		=> 'a*',
     );
 
-    # An individual icon resource
+# An individual icon resource:
+
     package Icon;
     use base 'Parse::Binary';
     use constant FORMAT => (
@@ -43,7 +50,9 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 	return $self->parent->substr($self->ImageOffset, $self->ImageSize);
     }
 
-    # Simple .ico file dumper
+# Simple F<.ico> file dumper that uses them:
+
+    use IconFile;
     my $icon_file = IconFile->new('input.ico');
     foreach my $icon ($icon_file->members) {
 	print "Dimension: ", $icon->Width, "x", $icon->Height, $/;
@@ -77,7 +86,7 @@ use constant BASE_CLASS	    => undef;
 use constant ENCODING	    => undef;
 use constant PADDING	    => undef;
 
-foreach my $item (PROPERTIES) {
+foreach my $item (+PROPERTIES) {
     no strict 'refs';
     my ($sigil, $name) = split(//, $item, 2);
     *{"$name"} =
@@ -326,12 +335,12 @@ sub default_args {
 
 sub dispatch_table {
     my ($self) = @_;
-    return { $self->DISPATCH_TABLE };
+    $self->DISPATCH_TABLE ? { $self->DISPATCH_TABLE } : {};
 }
 
 sub delegate_subs {
     my ($self) = @_;
-    return { $self->DELEGATE_SUBS };
+    $self->DELEGATE_SUBS ? { $self->DELEGATE_SUBS } : {};
 }
 
 sub class {

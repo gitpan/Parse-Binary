@@ -24,17 +24,19 @@ sub parse_fields {
 	push @{$self->{Names}}, $name;
 	push @{$self->{Count}}, $count;
 	push @{$self->{Group}}, $group;
-	if ($] >= 5.008 and defined $count) {
+	if (defined $count) {
 	    push @{$self->{Format}||=[]}, "($format)$count";
 	}
 	else {
-	    push @{$self->{Format}||=[]}, $format x ($count || 1);
+	    push @{$self->{Format}||=[]}, $format;
 	}
     }
 }
 
 sub _format {
-    join('', @{$_[0]{Format}||=[]});
+    my $format = join('', @{$_[0]{Format}||=[]});
+    $format =~ s/\((.*?)\)(\d*)/$1 x $2/eg if $] < 5.008;
+    return $format;
 }
 
 
