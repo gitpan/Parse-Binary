@@ -2,7 +2,7 @@
 # $Revision: #14 $ $Change: 4137 $ $DateTime: 2003/02/08 11:41:59 $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.03';
+$Parse::Binary::VERSION = '0.04';
 
 use bytes;
 use strict;
@@ -14,8 +14,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.03 of Parse::Binary, released
-February 15, 2004.
+This document describes version 0.04 of Parse::Binary, released
+February 16, 2004.
 
 =head1 SYNOPSIS
 
@@ -561,7 +561,6 @@ sub set_members {
 	$field,
 	[ map { $self->new_member( $field, $_ ) } @$members ],
     );
-    $self->refresh;
 }
 
 sub set_field_children {
