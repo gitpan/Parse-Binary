@@ -1,59 +1,47 @@
-----------------------------------------------------------------------
-r3624:  autrijus | 2004-03-16T11:48:54.918800Z
+[Changes for 0.08 - 2004-09-08]
 
-* This be 0.07.
+* In Parse::Binary::FixedFormat, pass data around by
+  reference instead of by value to reduce memory usage.
+
+[Changes for 0.07 - 2004-03-16]
+
 * Fix incompatibility with 5.6.x due to mixing "use integer" and "$] < 5.008".
 * Bump version for FixedFormat too.
-* even more optimisations.
-* cache sibling_index for more speed gain
-* cache is_type.
-* properly implement nested lazy loading.
+* Even more optimisations.
+* Cache sibling_index for more speed gain
+* Cache is_type.
+* Properly implement nested lazy loading.
 
-----------------------------------------------------------------------
-r3944:  autrijus | 2004-02-17T19:40:00.242275Z
+[Changes for 0.06 - 2004-02-17]
 
-* This be 0.06.
-* allow "__" to be used as "::" in is_type().
-* true lazy iterating of trailing members.
-* deprecate flyweight cache in favor of generators.
-* lazy loading of members via next_member implemented.
-* recommend Scalar::Util now.
-* new function set_output_file(), next_member(), callback() and callback_members()
-* today's work. finally made afpconv work reasonably.
-* keywords expansion.
+* Allow "__" to be used as "::" in is_type().
+* True lazy iterating of trailing members.
+* Deprecate flyweight cache in favor of generators.
+* Lazy loading of members via next_member implemented.
+* Recommend Scalar::Util now.
+* New function set_output_file(), next_member(), callback() and callback_members()
 
-----------------------------------------------------------------------
-r3878:  autrijus | 2004-02-16T22:07:06.771584Z
+[Changes for 0.05 - 2004-02-15]
 
-* This be 0.05.
-* fields with name as '_' now means "choose an unique name for me".
+* Fields with name as '_' now means "choose an unique name for me".
   there can be multiple such fields, and they won't overlap.
-* new control constant ENCODED_FIELDS (default to 'Data'), that controls 
+* New control constant ENCODED_FIELDS (default to 'Data'), that controls 
   which fields get affected by ENCODING.
 
-----------------------------------------------------------------------
-r3844:  autrijus | 2004-02-15T21:54:35.998897Z
+[Changes for 0.04 - 2004-02-15]
 
-* This be 0.04.
 * Remove an unneccessary ->refresh after set_members.
 
-----------------------------------------------------------------------
-r3810:  autrijus | 2004-02-14T19:56:57.380915Z
+[Changes for 0.03 - 2004-02-14]
 
-* This be 0.03.
-* properly handles "(format)*" style formats in 5.6.x.
+* Properly handles "(format)*" style formats in 5.6.x.
 
-----------------------------------------------------------------------
-r3628:  autrijus | 2004-02-13T20:08:21.983507Z
+[Changes for 0.02 - 2004-02-13]
 
-* This be 0.02.
-* more fixes for Perl 5.6.
-* make $count safe to use for perl 5.6.
-* fix small POD typo
+* More fixes for Perl 5.6.
+* Make $count safe to use for Perl 5.6.
+* Fix small POD typos.
 
-----------------------------------------------------------------------
-r3621:  autrijus | 2004-02-13T19:14:46.323811Z
+[Changes for 0.01 - 2004-02-13]
 
-* This be 0.01.
-
-----------------------------------------------------------------------
+* Initial CPAN release.

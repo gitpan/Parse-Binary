@@ -2,7 +2,7 @@
 # $Revision: #28 $ $Change: 3627 $ $DateTime: 2004-03-16T12:43:05.931462Z $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.07';
+$Parse::Binary::VERSION = '0.08';
 
 use bytes;
 use strict;
@@ -15,8 +15,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.07 of Parse::Binary, released
-March 16, 2004.
+This document describes version 0.08 of Parse::Binary, released
+September 8, 2004.
 
 =head1 SYNOPSIS
 

@@ -50,9 +50,14 @@ sub _format {
 
 my %_parent_format;
 sub unformat {
-    my ($self,$frec,$lazy,$parent) = @_;
+    my $self = shift;
+    my @flds = shift;
+    my $lazy = shift;
+    my $parent = shift;
 
-    my @flds = unpack $self->_format($lazy), $frec;
+    my $format = $self->_format($lazy);
+    @flds = unpack($format, $flds[0]) unless $format eq 'a*';
+
     my $rec = {};
     foreach my $i (0 .. $#{$self->{Names}}) {
 	my $name = $self->{Names}[$i];
@@ -74,7 +79,7 @@ sub unformat {
 		    $format =~ s/^\((.*?)\)\*$/$1/ or die "Not a count=* field";
 
 		    push @{$rec->{$name}}, $self->lazy_unformat(
-			$parent, $rec, $name, $i, $group, $pad, $format, $flds[0]
+			$parent, $rec, $name, $i, $group, $pad, $format, \($flds[0])
 		    ) if @flds and length($flds[0]);
 		    next;
 		}
@@ -105,11 +110,11 @@ sub lazy_unformat {
     my $valid_sub = $parent->can('valid_unformat');
     $iter_sub = sub {
 	# grab one chunk of data 
-	my @content = unpack($format, $data);
+	my @content = unpack($format, $$data);
 	my $length = length(pack($format, @content));
 	# eliminate it from the source string
-	my $chunk = substr($data, 0, $length, '');
-	my $done = (length($data) <= $pad);
+	my $chunk = substr($$data, 0, $length, '');
+	my $done = (length($$data) <= $pad);
 	if ($valid_sub and !$valid_sub->($parent, \@content, \$chunk, $done) and !$done) {
 	    # weed out invalid data immediately
 	    goto &$iter_sub;
