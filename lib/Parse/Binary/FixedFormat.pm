@@ -1,14 +1,16 @@
 package Parse::Binary::FixedFormat;
 
+use bytes;
 use strict;
-our $VERSION = "0.02";
+use integer;
+our $VERSION = "0.03";
 
 sub new {
     my ($class, $layout) = @_;
     my $self;
     if (ref $layout eq "HASH") {
 	require Parse::Binary::FixedFormat::Variants;
-	$self = new Parse::Binary::FixedFormat::Variants $layout;
+	$self = Parse::Binary::FixedFormat::Variants->new($layout);
     } else {
 	$self = { Names=>[], Count=>[], Format=>"" };
 	bless $self, $class;
@@ -33,16 +35,22 @@ sub parse_fields {
     }
 }
 
+my %_format_cache;
 sub _format {
     my ($self, $lazy) = @_;
-    my $format = join('', @{$self->{Format}||=[]});
-    $format =~ s/\((.*?)\)\*$/a*/ if $lazy; # tail iteration
-    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if ($] < 5.008);
-    return $format;
+    $self->{_format} ||= do {
+	my $format = join('', @{$self->{Format}});
+	$_format_cache{$format} ||= do {
+	    $format =~ s/\((.*?)\)\*$/a*/ if $lazy; # tail iteration
+	    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if ($] lt '5.008');
+	    $format;
+	};
+    };
 }
 
+my %_parent_format;
 sub unformat {
-    my ($self,$frec,$lazy) = @_;
+    my ($self,$frec,$lazy,$parent) = @_;
 
     my @flds = unpack $self->_format($lazy), $frec;
     my $rec = {};
@@ -62,8 +70,11 @@ sub unformat {
 		$pad = length($1) if $self->{Format}[$i] =~ /(X+)/;
 
 		if ($lazy and $i == $#{$self->{Names}}) {
+		    my $format = $self->{Format}[$i] or die "No format found";
+		    $format =~ s/^\((.*?)\)\*$/$1/ or die "Not a count=* field";
+
 		    push @{$rec->{$name}}, $self->lazy_unformat(
-			$rec, $name, $i, $group, $pad, \@flds
+			$parent, $rec, $name, $i, $group, $pad, $format, $flds[0]
 		    ) if @flds and length($flds[0]);
 		    next;
 		}
@@ -87,22 +98,26 @@ sub unformat {
 }
 
 sub lazy_unformat {
-    my ($self, $rec, $name, $i, $group, $pad, $flds) = @_;
-    my $format = $self->{Format}[$i] or die "No format found";
-    $format =~ s/^\((.*?)\)\*$/$1/ or die "Not a count=* field";
+    my ($self, $parent, $rec, $name, $i, $group, $pad, $format, $data) = @_;
 
     # for each request of a member data, we:
     my ($iter_sub);
+    my $valid_sub = $parent->can('valid_unformat');
     $iter_sub = sub {
 	# grab one chunk of data 
-	my @content = unpack($format, $flds->[0]);
+	my @content = unpack($format, $data);
 	my $length = length(pack($format, @content));
 	# eliminate it from the source string
-	substr($flds->[0], 0, $length, '');
+	my $chunk = substr($data, 0, $length, '');
+	my $done = (length($data) <= $pad);
+	if ($valid_sub and !$valid_sub->($parent, \@content, \$chunk, $done) and !$done) {
+	    # weed out invalid data immediately
+	    goto &$iter_sub;
+	}
 	# remove extra padding
 	substr($content[-1], -$pad, $pad, '') if $pad;
 	# and prepend (or replace if there are no more data) with it
-	splice(@{$rec->{$name}}, -1, ((length($flds->[0]) > $pad) ? 0 : 1), \@content);
+	splice(@{$rec->{$name}}, -1, ($done ? 1 : 0), \@content);
 	return \@content;
     };
     return $iter_sub;
@@ -120,8 +135,8 @@ sub format {
 	}
     	$i++;
     } 
-    my $frec = pack $self->_format, @flds;
-    return $frec;
+    no warnings 'uninitialized';
+    return pack($self->_format, @flds);
 }
 
 sub blank {
@@ -131,6 +146,8 @@ sub blank {
 					  '')));
     return $rec;
 }
+
+1;
 
 =head1 NAME
 

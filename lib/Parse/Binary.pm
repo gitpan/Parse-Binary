@@ -1,11 +1,12 @@
 # $File: /local/member/autrijus/Parse-Binary//lib/Parse/Binary.pm $ $Author: autrijus $
-# $Revision: #36 $ $Change: 3944 $ $DateTime: 2004-02-17T19:40:00.242275Z $
+# $Revision: #28 $ $Change: 3627 $ $DateTime: 2004-03-16T12:43:05.931462Z $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.06';
+$Parse::Binary::VERSION = '0.07';
 
 use bytes;
 use strict;
+use integer;
 use Parse::Binary::FixedFormat;
 
 =head1 NAME
@@ -14,8 +15,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.06 of Parse::Binary, released
-February 18, 2004.
+This document describes version 0.07 of Parse::Binary, released
+March 16, 2004.
 
 =head1 SYNOPSIS
 
@@ -90,30 +91,19 @@ use constant BASE_CLASS	    => undef;
 use constant ENCODING	    => undef;
 use constant PADDING	    => undef;
 
-eval { require Scalar::Util; 1 }
-    or *Scalar::Util::weaken = sub { 1 };
-
-foreach my $item (+PROPERTIES) {
-    no strict 'refs';
-    my ($sigil, $name) = split(//, $item, 2);
-    *{"$name"} =
-	($sigil eq '$') ? sub { $_[0]{$name} } :
-	($sigil eq '@') ? sub { wantarray ? @{$_[0]{$name}||=[]} : ($_[0]{$name}||=[]) } :
-	($sigil eq '%') ? sub { $_[0]{$name}||={} } :
-	die "Unknown sigil: $sigil";
-    *{"set_$name"} =
-	($sigil eq '$') ? sub { $_[0]->{$name} = $_[1] } :
-	($sigil eq '@') ? sub { @{$_[0]->{$name}||=$_[1]||[]} = @{$_[1]||[]} } :
-	($sigil eq '%') ? sub { %{$_[0]->{$name}||=$_[1]||{}} = %{$_[1]||{}} } :
-	die "Unknown sigil: $sigil";
+unless (eval { require Scalar::Util; 1 }) {
+    *Scalar::Util::weaken = sub { 1 };
+    *Scalar::Util::blessed = sub { UNIVERSAL::can($_[0], 'can') };
 }
 
 ### Constructors ###
 
 sub new {
     my ($self, $input, $attr) = @_;
+
+    no strict 'refs';
     my $class = $self->class;
-    $class->init;
+    $class->init unless ${"$class\::init_done"};
 
     $attr ||= {};
     $attr->{filename} ||= $input unless ref $input;
@@ -124,15 +114,11 @@ sub new {
     my $data = $obj->read_data($input);
     $obj->load($data, $attr);
 
-    my $load_sub = sub {
-	$obj->make_members unless $obj->iterator;
-    };
-
-    if ($obj->lazy) {
-	$obj->set_lazy($load_sub);
+    if ($obj->{lazy}) {
+	$obj->{lazy} = $obj;
     }
-    else {
-	&$load_sub;
+    elsif (!$obj->{iterator}) {
+	$obj->make_members;
     }
 
     return $obj;
@@ -142,21 +128,42 @@ sub dispatch_field {
     return undef;
 }
 
-sub init {
-    my ($class) = @_;
+use vars qw(%HasMembers %DefaultArgs);
+use vars qw(%Fields %MemberFields %MemberClass %Packer %Parser %FieldPackFormat);
+use vars qw(%DispatchField %DispatchTable);
 
+sub init {
     no strict 'refs';
-    return if ${"$class\::init_done"};
+    return if ${"$_[0]\::init_done"};
+
+    my $class = shift;
+
+    *{"$class\::class"} = sub { ref($_[0]) || $_[0] };
+    *{"$class\::is_type"} = \&is_type;
+
+    foreach my $item ($class->PROPERTIES) {
+	no strict 'refs';
+	my ($sigil, $name) = split(//, $item, 2);
+	*{"$class\::$name"} =
+	    ($sigil eq '$') ? sub { $_[0]{$name} } :
+	    ($sigil eq '@') ? sub { wantarray ? @{$_[0]{$name}||=[]} : ($_[0]{$name}||=[]) } :
+	    ($sigil eq '%') ? sub { $_[0]{$name}||={} } :
+	    die "Unknown sigil: $sigil";
+	*{"$class\::set_$name"} =
+	    ($sigil eq '$') ? sub { $_[0]->{$name} = $_[1] } :
+	    ($sigil eq '@') ? sub { @{$_[0]->{$name}||=$_[1]||[]} = @{$_[1]||[]} } :
+	    ($sigil eq '%') ? sub { %{$_[0]->{$name}||=$_[1]||{}} = %{$_[1]||{}} } :
+	    die "Unknown sigil: $sigil";
+    }
 
     my @args = $class->default_args;
+    *{"$class\::default_args"} = \@args;
     *{"$class\::default_args"} = sub { @args };
-
     my $delegate_subs = $class->delegate_subs;
     if (defined(&{"$class\::DELEGATE_SUBS"})) {
 	$delegate_subs = { $class->DELEGATE_SUBS };
     }
     *{"$class\::delegate_subs"} = sub { $delegate_subs };
-
     while (my ($subclass, $methods) = each %$delegate_subs) {
 	$methods = [ $methods ] unless ref $methods;
 	foreach my $method (grep length, @$methods) {
@@ -165,17 +172,18 @@ sub init {
 	    };
 	}
     }
-
     my $dispatch_table = $class->dispatch_table;
     if (defined(&{"$class\::DISPATCH_TABLE"})) {
 	$dispatch_table = { $class->DISPATCH_TABLE };
     }
+    $DispatchTable{$class} = $dispatch_table;
     *{"$class\::dispatch_table"} = sub { $dispatch_table };
 
     my $dispatch_field = undef;
     if (defined(&{"$class\::DISPATCH_FIELD"})) {
 	$dispatch_field = $class->DISPATCH_FIELD;
     }
+    $DispatchField{$class} = $dispatch_field;
     *{"$class\::dispatch_field"} = sub { $dispatch_field };
 
     my @format = $class->format_list;
@@ -234,6 +242,21 @@ sub init {
 	push @pack_formats, $pack_string;
     }
 
+    my $parser = $class->make_formatter(@formats);
+    my $packer = $class->make_formatter(@pack_formats);
+
+    $Packer{$class} = $packer;
+    $Parser{$class} = $parser;
+    $Fields{$class} = \@fields;
+    $HasMembers{$class} = @member_fields ? 1 : 0;
+    $DefaultArgs{$class} = \@args;
+    $MemberClass{$class} = \%member_class;
+    $MemberFields{$class} = \@member_fields;
+    $FieldPackFormat{$class} = { map { ref($_) ? $_->[0] : $_ } %field_pack_format };
+
+    *{"$class\::fields"} = \@fields;
+    *{"$class\::member_fields"} = \@member_fields;
+    *{"$class\::has_members"} = @member_fields ? sub { 1 } : sub { 0 };
     *{"$class\::fields"} = sub { @fields };
     *{"$class\::formats"} = sub { @formats };
     *{"$class\::member_fields"} = sub { @member_fields };
@@ -243,8 +266,6 @@ sub init {
     *{"$class\::field_pack_format"} = sub { $field_pack_format{$_[1]}[0] };
     *{"$class\::field_length"} = sub { $field_length{$_[1]} };
 
-    my $parser = $class->make_formatter(@formats);
-    my $packer = $class->make_formatter(@pack_formats);
     *{"$class\::parser"} = sub { $parser };
     *{"$class\::packer"} = sub { $packer };
     *{"$class\::field_parser"} = sub {
@@ -252,12 +273,13 @@ sub init {
 	$field_parser{$field} || do {
 	    Parse::Binary::FixedFormat->new( [
 		$self->eval_format(
-		    $self->struct,
+		    $self->{struct},
 		    join(':', $field, @{$field_format{$field}}),
 		),
 	    ] );
 	};
     };
+
     *{"$class\::field_packer"} = sub { $field_packer{$_[1]} };
     *{"$class\::has_field"} = sub { $field_packer{$_[1]} };
 
@@ -271,17 +293,18 @@ sub init {
 
 	    *{"$class\::$field"} = sub {
 		my ($self) = @_;
-		return Encode::decode($encoding => $self->field($field));
+		return Encode::decode($encoding => $self->{struct}{$field});
 	    };
+
 	    *{"$class\::Set$field"} = sub {
 		my ($self, $data) = @_;
-		$self->set_field($field, Encode::encode($encoding => $data));
+		$self->{struct}{$field} = Encode::encode($encoding => $data);
 	    };
 	    next;
 	}
 
-	*{"$class\::$field"} = sub { $_[0]->field($field) };
-	*{"$class\::Set$field"} = sub { $_[0]->set_field($field, $_[1]) };
+	*{"$class\::$field"} = sub { $_[0]->{struct}{$field} };
+	*{"$class\::Set$field"} = sub { $_[0]->{struct}{$field} = $_[1] };
     }
 
     ${"$class\::init_done"} = 1;
@@ -295,12 +318,12 @@ sub initialize {
 
 sub field {
     my ($self, $field) = @_;
-    return $self->struct->{$field};
+    return $self->{struct}{$field};
 }
 
 sub set_field {
     my ($self, $field, $data) = @_;
-    $self->struct->{$field} = $data;
+    $self->{struct}{$field} = $data;
 }
 
 sub classname {
@@ -321,11 +344,16 @@ sub member_fields {
 
 sub dispatch_class {
     my ($self, $field) = @_;
-    my $table = $self->dispatch_table;
+    my $table = $DispatchTable{ref $self};
     my $class = exists($table->{$field}) ? $table->{$field} : $table->{'*'};
 
     $class = &$class($self, $field) if UNIVERSAL::isa($class, 'CODE');
-    return $self->classname($class);
+    if (my $members = $self->{parent}{callback_members}) {
+	return unless $members->{$class};
+    }
+    my $subclass = $self->classname($class) or return;
+    return if $subclass eq $class;
+    return $subclass;
 }
 
 sub require {
@@ -419,91 +447,99 @@ sub padding {
 
 sub load_struct {
     my ($self, $data) = @_;
-    local $SIG{__WARN__} = sub {};
-    $self->{struct} = $self->parser->unformat($$data . $self->padding, $self->lazy);
+    $self->{struct} = $Parser{ref $self}->unformat($$data . $self->padding, $self->{lazy}, $self);
 }
 
 sub load_size {
     my ($self, $data) = @_;
-    $self->set_size(length($$data));
+    $self->{size} = length($$data);
     return 1;
 }
 
 sub lazy_load {
     my ($self) = @_;
-    ref(my $sub = $self->lazy) or return;
-    $self->set_lazy(1);
-    goto &$sub;
+    ref(my $sub = $self->{lazy}) or return;
+    $self->{lazy} = 1;
+    $self->make_members unless $self->{iterator};
 }
 
+my %DispatchClass;
 sub load {
     my ($self, $data, $attr) = @_;
     return $self unless defined $data;
-    $self->class->init;
+
+    no strict 'refs';
+    my $class = ref($self) || $self;
+    $class->init unless ${"$class\::init_done"};
 
     $self->load_struct($data);
     $self->load_size($data);
 
-    if (my $field = $self->dispatch_field) {
-	my $value = $self->$field;
-	my $subclass = $self->dispatch_class($value);
-	if ($subclass and $subclass ne $self->class) {
+    if (my $field = $DispatchField{$class}) {
+	if (
+	    my $subclass = $DispatchClass{$class}{ $self->{struct}{$field} }
+		||= $self->dispatch_class( $self->{struct}{$field})
+	) {
 	    $self->require($subclass);
 	    bless($self, $subclass);
 	    $self->load($data, $attr);
-	    $self->make_members unless $self->iterator;
 	}
     }
 
     return $self;
 }
 
+my (%classname, %fill_cache);
 sub spawn {
     my ($self, %args) = @_;
-    my $class = $self->class;
-    $class->init;
+    my $class = ref($self) || $self;
 
-    if (my $subclass = $self->classname($args{Class})) {
-	delete $args{Class};
-	$self->require($subclass);
-	return $subclass->spawn(%args);
+    no strict 'refs';
+
+    if (my $subclass = delete($args{Class})) {
+	$class = $classname{$subclass} ||= do {
+	    my $name = $self->classname($subclass);
+	    $self->require($name);
+	    $name->init;
+	    $name;
+	};
     }
 
-    return bless({}, $class) unless %args or $self->default_args;
+    bless({
+	struct => {
+	    %args,
+	    @{ $DefaultArgs{$class} },
+	    %{ $fill_cache{$class} ||= $class->fill_in },
+	},
+    }, $class);
+}
 
-    my %hash;
-    %args = (%args, $self->default_args);
-    foreach my $field ($self->fields) {
-	$hash{$field} = $args{$field};
-    }
+sub fill_in {
+    my $class = shift;
+    my $entries = {};
 
     foreach my $super_class ($class->superclasses) {
-	my $field = $super_class->dispatch_field or next;
-	my $table = $super_class->dispatch_table or next;
-	next if defined $hash{$field};
-	foreach my $code (sort keys %$table) {
+	my $field = $DispatchField{$super_class} or next;
+	my $table = $DispatchTable{$super_class} or next;
+	foreach my $code (reverse sort keys %$table) {
 	    $class->is_type($table->{$code}) or next;
-	    $hash{$field} = $code;
+	    $entries->{$field} = $code;
 	    last;
 	}
     }
 
-    my $obj = bless({}, $class);
-    $obj->set_struct(\%hash);
-    $obj->refresh;
-    return $obj;
+    return $entries;
 }
 
 sub spawn_sibling {
     my ($self, %args) = @_;
-    my $parent = $self->parent or die "$self has no parent";
+    my $parent = $self->{parent} or die "$self has no parent";
 
     my $obj = $self->spawn(%args);
-#    $obj->set_lazy($self->lazy);
-    $obj->set_parent($parent);
-    $obj->set_output($self->output);
-    $obj->set_siblings($self->{siblings});
-    $obj->set_size(length($obj->dump));
+    @{$obj}{qw( lazy parent output siblings )} =
+	@{$self}{qw( lazy parent output siblings )};
+    $obj->{size} = length($obj->dump);
+    $obj->refresh_parent;
     $obj->initialize;
 
     return $obj;
@@ -513,21 +549,32 @@ sub sibling_index {
     my ($self, $obj) = @_;
     $obj ||= $self;
 
-    my @siblings = $self->siblings;
-    foreach my $index (0 .. $#siblings) {
+    my @siblings = @{$self->{siblings}};
+    foreach my $index (($obj->{index}||0) .. $#siblings) {
 	return $index if $obj == $siblings[$index];
     }
 
     return undef;
 }
 
+sub gone {
+    my ($self, $obj) = @_;
+    $self->{parent}{struct}{Data} .= ($obj || $self)->dump;
+}
+
 sub prepend_obj {
     my ($self, %args) = @_;
+    if ($self->{lazy}) {
+	my $obj = $self->spawn(%args);
+	$self->gone($obj);
+	return;
+    }
     my $obj = $self->spawn_sibling(%args);
+    my $siblings = $self->{siblings};
+    my $index = $self->{index} ? $self->{index}++ : $self->sibling_index;
+    $obj->{index} = $index;
 
-    $self->set_siblings([
-	map { (($_ == $self) ? $obj : ()), $_ } $self->siblings
-    ]);
+    splice(@$siblings, $index, 0, $obj);
     return $obj;
 }
 
@@ -535,18 +582,19 @@ sub append_obj {
     my ($self, %args) = @_;
     my $obj = $self->spawn_sibling(%args);
 
-    $self->set_siblings([
-	map { $_, (($_ == $self) ? $obj : ()) } $self->siblings
-    ]);
+    @{$self->{siblings}} = (
+	map { $_, (($_ == $self) ? $obj : ()) } @{$self->{siblings}}
+    );
     return $obj;
 }
 
 sub remove {
     my ($self, %args) = @_;
-    my $siblings = $self->siblings;
-    splice(@$siblings, $self->sibling_index, 1);
+    my $siblings = $self->{siblings};
+    splice(@$siblings, $self->sibling_index, 1, undef);
 
     Scalar::Util::weaken($self->{parent});
+    Scalar::Util::weaken($self);
 }
 
 sub read_data {
@@ -567,21 +615,16 @@ sub read_file {
     return scalar <FH>;
 }
 
-sub has_members {
-    my ($self) = @_;
-    return $self->member_fields;
-}
-
 sub make_members {
     my ($self) = @_;
 
-    $self->has_members or return;
-    $self->set_children();
+    $HasMembers{ref $self} or return;
+    %{$self->{children}} = ();
 
-    foreach my $field ($self->member_fields) {
+    foreach my $field (@{$MemberFields{ref $self}}) {
 	my ($format) = $self->eval_format(
-	    $self->struct,
-	    $self->field_pack_format($field),
+	    $self->{struct},
+	    $FieldPackFormat{ref $self}{$field},
 	);
 
 	my $members = [ map {
@@ -609,22 +652,24 @@ sub set_field_children {
 
 sub field_children {
     my ($self, $field) = @_;
-    my $children = ($self->children->{$field} ||= []);
+    my $children = ($self->{children}{$field} ||= []);
     # $_->lazy_load for @$children;
     return(wantarray ? @$children : $children);
 }
 
 sub validate_memberdata {
     my ($self, $field) = @_;
-    return @{$self->field($field)||[]};
+    return @{$self->{struct}{$field}||[]};
 }
 
 sub first_member {
     my ($self, $type) = @_;
     $self->lazy_load;
 
-    return undef unless $self->has_members;
-    foreach my $field ($self->member_fields) {
+    return undef unless $HasMembers{ref $self};
+
+    no strict 'refs';
+    foreach my $field (@{$MemberFields{ref $self}}) {
 	foreach my $member ($self->field_children($field)) {
 	    return $member if $member->is_type($type);
 	}
@@ -634,13 +679,19 @@ sub first_member {
 
 sub next_member {
     my ($self, $type) = @_;
-    return undef unless $self->has_members;
+    return undef unless $HasMembers{ref $self};
 
-    if ($self->lazy and !$self->iterated) {
-	while (my $member = $self->make_next_member) {
+    if ($self->{lazy} and !$self->{iterated}) {
+	if (ref($self->{lazy})) {
+	    %{$self->{children}} = ();
+	    $self->{iterator} = $self->make_next_member;
+	    $self->lazy_load;
+	}
+
+	while (my $member = &{$self->{iterator}}) {
 	    return $member if $member->is_type($type);
 	}
-	$self->set_iterated(1);
+	$self->{iterated} = 1;
 	return;
     }
 
@@ -651,70 +702,44 @@ sub next_member {
 }
 
 sub make_next_member {
-    my ($self) = @_;
+    my $self = shift;
+    my $class = ref($self);
+    my ($field_idx, $item_idx, $format) = (0, 0, undef);
+    my @fields = @{$MemberFields{$class}};
+    my $struct = $self->{struct};
+    my $formats = $FieldPackFormat{$class};
 
-    $self->has_members or return;
+    sub { LOOP: {
+	my $field = $fields[$field_idx] or return;
 
-    if (ref($self->lazy)) {
-	$self->set_children;
-	$self->set_iterator({ field_idx => 0, item_idx => 0 });
-	$self->lazy_load;
-    }
+	my $items = $struct->{$field};
+	if ($item_idx > $#$items) {
+	    $field_idx++;
+	    $item_idx = 0;
+	    undef $format;
+	    redo;
+	}
 
-    my $iterator = $self->iterator or return; 
+	$format ||= ($self->eval_format( $struct, $formats->{$field} ))[0];
 
-    my ($field_idx, $item_idx, $format)
-	= @{$iterator}{qw(field_idx item_idx format)};
+	my $item = $items->[$item_idx++];
+	$item = &$item if UNIVERSAL::isa($item, 'CODE');
+	$self->valid_memberdata($item) or redo;
 
-    my @fields = $self->member_fields;
-    if ($field_idx > $#fields) {
-	$self->set_iterator;
-	return;
-    }
-
-    my $field = $fields[$field_idx] or return;
-    $format ||= ($self->eval_format(
-	$self->struct,
-	$self->field_pack_format($field),
-    ))[0];
-
-    my $items = $self->field($field);
-    if ($item_idx > $#$items) {
-	$self->set_iterator({
-	    field_idx   => ++$field_idx,
-	    item_idx    => 0,
-	    format	=> undef,
-	});
-	goto &{$self->can('make_next_member')};
-    }
-
-    my $item = $items->[$item_idx];
-    $self->set_iterator({
-	field_idx   => $field_idx,
-	item_idx    => ++$item_idx,
-	format	    => $format,
-    });
-
-    $item = &$item if UNIVERSAL::isa($item, 'CODE');
-
-    if (!$self->valid_memberdata($item)) {
-	goto &{$self->can('make_next_member')};
-    }
-
-    my $member = $self->new_member( $field, \pack($format, @$item) );
-    my $children = $self->field_children($field);
-    push @$children, $member;
-    $member->lazy_load;
-    return $member;
+	my $member = $self->new_member( $field, \pack($format, @$item) );
+	$member->{index} = (push @{$self->{children}{$field}}, $member) - 1;
+	return $member;
+    } };
 }
 
 sub members {
     my ($self, $type) = @_;
     $self->lazy_load;
 
+    no strict 'refs';
     my @members = map {
 	grep { $type ? $_->is_type($type) : 1 } $self->field_children($_)
-    } $self->member_fields;
+    } @{$MemberFields{ref $self}};
     wantarray ? @members : \@members;
 }
 
@@ -729,11 +754,12 @@ sub members_recursive {
 
 sub new_member {
     my ($self, $field, $data) = @_;
-    my $obj = $self->member_class($field)->new($data);
+    my $obj = $MemberClass{ref $self}{$field}->new(
+	$data, { lazy => $self->{lazy}, parent => $self }
+    );
 
-    $obj->set_siblings(scalar $self->field_children($field));
-    $obj->set_parent($self);
-    $obj->set_output($self->output);
+    $obj->{output} = $self->{output};
+    $obj->{siblings} = $self->{children}{$field}||=[];
     $obj->initialize;
 
     return $obj;
@@ -743,10 +769,15 @@ sub valid_memberdata {
     length($_[-1][0])
 }
 
+sub dump_members {
+    my ($self) = @_;
+    return $Packer{ref $self}->format($self->{struct});
+}
+
 sub dump {
     my ($self) = @_;
-    local $SIG{__WARN__} = sub {};
-    return $self->packer->format($self->struct);
+    return $self->dump_members if $HasMembers{ref $self};
+    return $Packer{ref $self}->format($self->{struct});
 }
 
 sub write {
@@ -755,11 +786,11 @@ sub write {
     if (ref($file)) {
 	$$file = $self->dump;
     }
-    elsif (!defined($file) and my $fh = $self->output) {
+    elsif (!defined($file) and my $fh = $self->{output}) {
 	print $fh $self->dump;
     }
     else {
-	$file = $self->filename unless defined $file;
+	$file = $self->{filename} unless defined $file;
 	$self->write_file($file, $self->dump) if defined $file;
     }
 }
@@ -780,11 +811,19 @@ sub superclasses {
     return @{"$class\::ISA"};
 }
 
+my %type_cache;
 sub is_type {
     my ($self, $type) = @_;
     return 1 unless defined $type;
 
     my $class = ref($self) || $self;
+
+    if (exists $type_cache{$class}{$type}) {
+	return $type_cache{$class}{$type};
+    }
+
+    $type_cache{$class}{$type} = 1;
+
 
     $type =~ s/__/::/g;
     $type =~ s/[^\w:]//g;
@@ -794,23 +833,22 @@ sub is_type {
     foreach my $super_class ($class->superclasses) {
 	return 1 if $super_class->is_type($type);
     };
+
+    $type_cache{$class}{$type} = 0;
 }
 
 sub refresh {
     my ($self) = @_;
 
-    foreach my $field ($self->member_fields) {
+    foreach my $field (@{$MemberFields{ref $self}}) {
 	my $parser = $self->field_parser($field);
 	my $padding = $self->padding;
 
 	local $SIG{__WARN__} = sub {};
-	$self->set_field(
-	    $field, [
-		map {
-		    $parser->unformat( $_->dump . $padding)->{$field}[0]
-		} @{$self->children->{$field}||[]},
-	    ],
-	);
+	@{$self->{struct}{$field}} = map {
+	    $parser->unformat( $_->dump . $padding, 0, $self)->{$field}[0]
+	} grep defined, @{$self->{children}{$field}||[]};
+
 	$self->validate_memberdata;
     }
 
@@ -819,21 +857,21 @@ sub refresh {
 
 sub refresh_parent {
     my ($self) = @_;
-    my $parent = $self->parent or return;
-    $parent->refresh;
+    my $parent = $self->{parent} or return;
+    $parent->refresh unless !Scalar::Util::blessed($parent) or $parent->{lazy};
 }
 
 sub first_parent {
     my ($self, $type) = @_;
     return $self if $self->is_type($type);
-    my $parent = $self->parent or return;
+    my $parent = $self->{parent} or return;
     return $parent->first_parent($type);
 }
 
 sub substr {
     my $self    = shift;
     my $data    = $self->Data;
-    my $offset  = shift(@_) - ($self->size - length($data));
+    my $offset  = shift(@_) - ($self->{size} - length($data));
     my $length  = @_ ? shift(@_) : (length($data) - $offset);
     my $replace = shift;
 
@@ -845,46 +883,61 @@ sub substr {
 
     # Substitute a range
     substr($data, $offset, $length, $replace);
-    $self->SetData($data);
+    $self->{struct}{Data} = $data;
 }
 
 sub set_output_file {
     my ($self, $file) = @_;
 
-    require IO::File;
-    my $fh = IO::File->new("> $file") or die $!;
+    open my $fh, '>', $file or die $!;
     binmode($fh);
-    $self->set_output($fh);
+    $self->{output} = $fh;
 }
 
+my %callback_map;
 sub callback {
     my $self  = shift;
+    my $pkg   = shift || caller;
     my $types = shift or return;
 
-    my ($pkg, $level);
-    while ($pkg = caller($level++)) {
-	last unless $pkg eq __PACKAGE__;
-    }
-    die "Cannot find calling package" unless $pkg;
+    my $map = $callback_map{"@$types"} ||= $self->callback_map($pkg, $types);
+    my $sub = $map->{ref $self} || $map->{'*'} or return;
+    unshift @_, $self;
+    goto &$sub;
+}
 
-    $self->lazy_load;
-    foreach my $type (@$types) {
+sub callback_map {
+    my ($self, $pkg, $types) = @_;
+    my %map;
+    my $base = $self->BASE_CLASS;
+    foreach my $type (map "$_", @$types) {
 	no strict 'refs';
 	my $method = $type;
 	$method =~ s/::/_/g;
 	$method =~ s/\*/__/g;
-	next unless $type eq '*' or $self->is_type($type);
 
-	unshift @_, $self;
-	goto &{"$pkg\::$method"};
+	defined &{"$pkg\::$method"} or next;
+
+	$type = "$base\::$type" unless $type eq '*';
+	$map{$type} = \&{"$pkg\::$method"};
     }
+    return \%map;
 }
 
 sub callback_members {
     my $self = shift;
+    $self->{callback_members} = { map { ($_ => 1) } @{$_[0]} };
+
     while (my $member = $self->next_member) {
-	$member->callback(@_);
+	$member->callback(scalar caller, @_);
     }
+}
+
+sub done {
+    my $self = shift;
+    return unless $self->{lazy};
+    $self->write;
+    $self->remove;
 }
 
 1;

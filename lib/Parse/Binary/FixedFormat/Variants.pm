@@ -1,7 +1,7 @@
 package Parse::Binary::FixedFormat::Variants;
 
 use strict;
-our $VERSION = "0.02";
+our $VERSION = "0.03";
 
 sub new {
     my ($class,$recfmt) = @_;
