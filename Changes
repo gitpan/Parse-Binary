@@ -1,0 +1,146 @@
+----------------------------------------------------------------------
+r3621:  autrijus | 2004-02-13T19:14:46.323811Z
+
+* This be 0.01.
+* add license informaiton.
+
+----------------------------------------------------------------------
+r3620:  autrijus | 2004-02-13T19:14:32.122625Z
+
+* update license.
+
+----------------------------------------------------------------------
+r3618:  autrijus | 2004-02-13T17:04:33.651376Z
+
+* add test directory
+
+----------------------------------------------------------------------
+r3611:  autrijus | 2004-02-13T16:33:52.600072Z
+
+* fill attributes again for dispatched objects.
+
+----------------------------------------------------------------------
+r3605:  autrijus | 2004-02-13T14:59:28.262562Z
+
+* properly set filename.
+
+----------------------------------------------------------------------
+r3603:  autrijus | 2004-02-13T14:32:57.874389Z
+
+* improved POD sections.
+* move the ->substr method from Win32::Exe to here.
+* regenrate MANIFEST.
+
+----------------------------------------------------------------------
+r3595:  autrijus | 2004-02-13T13:25:03.777332Z
+
+* oops, ->write($filename) was broken
+
+----------------------------------------------------------------------
+r3593:  autrijus | 2004-02-13T12:00:16.222210Z
+
+* a new shorthand method ->require_class.
+* DELEGATE_SUBS now marks classes to delegate methods to
+
+----------------------------------------------------------------------
+r3591:  autrijus | 2004-02-13T09:47:03.209504Z
+
+* ->require now dies if a genuine error is discovered during eval.
+* ->require also returns the full classname.
+
+----------------------------------------------------------------------
+r3582:  autrijus | 2004-02-13T00:22:19.062171Z
+
+* do not need to special-case the 'Length' field anymore.
+* initialize classes with DEFAULT_ARGS even if no %args is explicitly passed.
+
+----------------------------------------------------------------------
+r3580:  autrijus | 2004-02-13T00:03:47.942671Z
+
+* dynamic context for ->members and members->recursive too.
+* new method, set_members, to reinitiate member field.
+
+----------------------------------------------------------------------
+r3571:  autrijus | 2004-02-12T20:12:11.122329Z
+
+* ->write without arguments now writes back to the original filename.
+* implemented a special '__BASE__' dispatch class that means the baseclass.
+
+----------------------------------------------------------------------
+r3561:  autrijus | 2004-02-12T15:59:02.953230Z
+
+* allow for zero-occurance repeats, needed by resource table parsing.
+
+----------------------------------------------------------------------
+r3553:  autrijus | 2004-02-12T10:57:33.727541Z
+
+* make ->siblings into dynamic context (wantarray).
+* make ->field_children into dynamic context (wantarray).
+* it turns out we don't need NEXT.pm anyway.
+
+----------------------------------------------------------------------
+r3547:  autrijus | 2004-02-11T23:09:36.866183Z
+
+* add a new virtual method ->initialize
+
+----------------------------------------------------------------------
+r3511:  autrijus | 2004-02-11T14:23:21.539978Z
+
+* correct variable interpolation in group and count fields
+
+----------------------------------------------------------------------
+r3508:  autrijus | 2004-02-11T13:38:05.591034Z
+
+* multimember support.
+
+----------------------------------------------------------------------
+r3507:  autrijus | 2004-02-11T12:05:25.226077Z
+
+* roundtrip after refresh works.
+
+----------------------------------------------------------------------
+r3489:  autrijus | 2004-02-11T09:17:04.804330Z
+
+* refactor per-member dump back to Parse::AFP
+
+----------------------------------------------------------------------
+r3488:  autrijus | 2004-02-11T09:16:07.525695Z
+
+* start of variant packing
+
+----------------------------------------------------------------------
+r3487:  autrijus | 2004-02-11T08:51:45.878881Z
+
+* typo in the upstream source. oops
+
+----------------------------------------------------------------------
+r3486:  autrijus | 2004-02-11T08:28:38.289682Z
+
+* add sibling control fields
+
+----------------------------------------------------------------------
+r3485:  autrijus | 2004-02-11T08:16:24.774399Z
+
+* switch to proper accessors
+
+----------------------------------------------------------------------
+r3484:  autrijus | 2004-02-11T07:58:17.492754Z
+
+* use lowercase as primary member fields.
+
+----------------------------------------------------------------------
+r3468:  autrijus | 2004-02-10T21:12:39.655847Z
+
+* tidy up a bit.
+
+----------------------------------------------------------------------
+r3466:  autrijus | 2004-02-10T21:01:02.807151Z
+
+* add "\t" separated distinct Memberdata
+
+----------------------------------------------------------------------
+r3465:  autrijus | 2004-02-10T19:02:17.801087Z
+
+* initial commit.
+
+----------------------------------------------------------------------
