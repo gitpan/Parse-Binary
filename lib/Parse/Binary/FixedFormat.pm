@@ -35,7 +35,7 @@ sub parse_fields {
 
 sub _format {
     my $format = join('', @{$_[0]{Format}||=[]});
-    $format =~ s/\((.*?)\)(\d*)/$1 x $2/eg if $] < 5.008;
+    $format =~ s/\((.*?)\)(?:(\d+)|(\*))/$1 x ($3 ? 1 : $2)/eg if $] < 5.008;
     return $format;
 }
 

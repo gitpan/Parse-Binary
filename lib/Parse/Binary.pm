@@ -2,7 +2,7 @@
 # $Revision: #14 $ $Change: 4137 $ $DateTime: 2003/02/08 11:41:59 $
 
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.02';
+$Parse::Binary::VERSION = '0.03';
 
 use bytes;
 use strict;
@@ -14,8 +14,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.02 of Parse::Binary, released
-February 14, 2004.
+This document describes version 0.03 of Parse::Binary, released
+February 15, 2004.
 
 =head1 SYNOPSIS
 
@@ -710,8 +710,13 @@ sub substr {
     my $length  = @_ ? shift(@_) : (length($data) - $offset);
     my $replace = shift;
 
+    # XXX - Check for "substr outside string"
+    return if $offset > length($data);
+
+    # Fetch a range
     return substr($data, $offset, $length) if !defined $replace;
 
+    # Substitute a range
     substr($data, $offset, $length, $replace);
     $self->SetData($data);
 }
