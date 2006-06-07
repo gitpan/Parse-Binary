@@ -3,7 +3,7 @@
 use inc::Module::Install;
 
 name		('Parse-Binary');
-author		('Autrijus Tang <autrijus@autrijus.org>');
+author		('Audrey Tang <cpan@audreyt.org>');
 abstract	('Binary data structure parser');
 license		('perl');
 version_from	('lib/Parse/Binary.pm');

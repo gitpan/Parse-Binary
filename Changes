@@ -1,3 +1,8 @@
+[Changes for 0.10 - 2006-07-07]
+
+* Updated Module::Install to 0.63.
+* Updated Audrey's contact information.
+
 [Changes for 0.09 - 2004-12-24]
 
 * In Parse::Binary::FixedFormat's lazy_unformat, remove
