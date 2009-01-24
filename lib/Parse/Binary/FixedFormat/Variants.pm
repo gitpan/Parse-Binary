@@ -121,14 +121,14 @@ apply to the record.
 
 =head1 AUTHORS
 
-Autrijus Tang E<lt>autrijus@autrijus.orgE<gt>
+Audrey Tang E<lt>cpan@audreyt.orgE<gt>
 
 Based on Data::FixedFormat::Variants, written by Thomas Pfau <pfau@nbpfaus.net>
 http://nbpfaus.net/~pfau/.
 
 =head1 COPYRIGHT
 
-Copyright 2004 by Autrijus Tang E<lt>autrijus@autrijus.orgE<gt>.
+Copyright 2004-2009 by Audrey Tang E<lt>cpan@audreyt.orgE<gt>.
 
 Copyright (C) 2000,2002 Thomas Pfau.  All rights reserved.
 

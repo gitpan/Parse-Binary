@@ -1,3 +1,9 @@
+[Changes for 0.11 - 2009-01-25]
+
+* When formatting a structure, repeating a variable-counted field 0 times
+  should result in no output, instead of a literal ARRAY(...) string.
+  Contributed by: Werner Höhrer
+
 [Changes for 0.10 - 2006-07-07]
 
 * Updated Module::Install to 0.63.

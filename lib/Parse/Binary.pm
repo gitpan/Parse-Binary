@@ -1,6 +1,7 @@
 package Parse::Binary;
-$Parse::Binary::VERSION = '0.10';
+$Parse::Binary::VERSION = '0.11';
 
+use 5.005;
 use bytes;
 use strict;
 use integer;
@@ -12,8 +13,8 @@ Parse::Binary - Unpack binary data structures into object hierarchies
 
 =head1 VERSION
 
-This document describes version 0.10 of Parse::Binary, released
-June 7, 2006.
+This document describes version 0.11 of Parse::Binary, released
+January 25, 2009.
 
 =head1 SYNOPSIS
 
@@ -949,7 +950,7 @@ Audrey Tang E<lt>cpan@audreyt.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2004, 2006 by Audrey Tang E<lt>cpan@audreyt.orgE<gt>.
+Copyright 2004-2009 by Audrey Tang E<lt>cpan@audreyt.orgE<gt>.
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.
